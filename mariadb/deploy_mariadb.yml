@@ -1,0 +1,12 @@
+---
+# playbook file for ansible-mariadb-galera-cluster
+
+- name: Import mariadb playbook
+  import_playbook: install_mariadb.yml
+
+- name: Run mysql_secure_installation
+  import_playbook: mysql_secure_install.yml
+
+- name: Import galera playbook
+  import_playbook: setup_galera.yml
+  when: groups['database'] | length == 3

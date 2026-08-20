@@ -1,0 +1,41 @@
+- name: Perform mysql_secure_installation on first host
+  hosts: database[0]
+  become: yes
+  gather_facts: false
+  tasks:
+
+  - name: Start service mariadb-server
+    service:
+      name: mariadb
+      state: started
+    when: not mariadb_exists | bool
+
+  - name: Set root password
+    mysql_user:
+      name: root
+      password: "{{ mariadb_root_password }}"
+      login_user: root
+      login_unix_socket: /var/run/mysqld/mysqld.sock
+    no_log: yes
+    when: not mariadb_exists | bool
+
+  - name: Removes all anonymous user accounts
+    mysql_user:
+      name: ''
+      host_all: true
+      state: absent
+      login_user: root
+      login_password: "{{ mariadb_root_password }}"
+      login_unix_socket: /var/run/mysqld/mysqld.sock
+    no_log: yes
+    when: not mariadb_exists | bool
+    
+  - name: Remove test database
+    mysql_db:
+      name: test
+      state: absent
+      login_user: root
+      login_password: "{{ mariadb_root_password }}"
+      login_unix_socket: /var/run/mysqld/mysqld.sock
+    no_log: yes
+    when: not mariadb_exists | bool

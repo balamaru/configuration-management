@@ -1,0 +1,81 @@
+---
+- name: Prepare hosts
+  hosts: all
+  become: yes
+  gather_facts: true
+  tasks:
+
+  - name: Update and install some packages
+    apt:
+      name:
+        - apt-transport-https
+        - curl
+        - python3-pip
+        - python3-dev
+        - default-libmysqlclient-dev
+        - build-essential
+        - rsync
+        - gnupg2
+      update_cache: yes
+
+  - name: Make sure pymysql is present
+    pip:
+      name:
+        - pymysql
+      state: present
+
+
+- name: Install mariadb
+  hosts: database
+  become: yes
+  gather_facts: false
+  tasks:
+
+  - name: Ensure keyrings directory exists
+    file:
+      path: /etc/apt/keyrings
+      state: directory
+      mode: '0755'
+
+  - name: Import the MariaDB PGP Key
+    ansible.builtin.get_url:
+      url: "https://mariadb.org/mariadb_release_signing_key.asc"
+      dest: /etc/apt/keyrings/mariadb-keyring.asc
+      mode: '0644'
+
+  - name: Add MariaDB repository
+    apt_repository:
+      repo: "deb [signed-by=/etc/apt/keyrings/mariadb-keyring.asc] https://deb.mariadb.org/{{ mariadb_version }}/ubuntu {{ ansible_distribution_release }} main"
+      state: present
+      filename: mariadb
+      update_cache: yes
+
+  - name: Install mariadb-server and mariadb-client
+    apt:
+      name:
+        - mariadb-server
+        - mariadb-client
+        - python3-pymysql
+      update_cache: yes
+    register: mariadb_server
+    retries: 3
+    delay: 5
+    until: mariadb_server is success
+
+  - name: Stop service mariadb-server
+    service:
+      name: mariadb
+      state: stopped
+    when: groups['database'] | length == 1
+
+  - name: Add mariadb configuration to /etc/mysql/mariadb.conf.d/ (standalone rdb)
+    template:
+      src: templates/mariadb.cnf.j2
+      dest: /etc/mysql/mariadb.conf.d/60-mariadb.cnf
+    when: groups['database'] | length == 1
+
+  - name: Start service mariadb
+    service:
+      name: mariadb
+      state: started
+    when: groups['database'] | length == 1

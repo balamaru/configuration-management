@@ -1,0 +1,80 @@
+---
+- name: Setup Galera Cluster
+  hosts: database
+  become: yes
+  gather_facts: true
+  tasks:
+
+  # - name: Open firewall ports for Galera (if ufw active)
+  #   community.general.ufw:
+  #     rule: allow
+  #     port: "{{ item }}"
+  #     proto: tcp
+  #   loop:
+  #     - "3306"
+  #     - "4567"
+  #     - "4568"
+  #     - "4444"
+  #   ignore_errors: yes
+
+  # - name: Open firewall UDP port for Galera
+  #   community.general.ufw:
+  #     rule: allow
+  #     port: "4567"
+  #     proto: udp
+  #   ignore_errors: yes
+
+  - name: Check for /home/bootstrap
+    stat: 
+      path: /home/bootstrap
+    register: bootstrapped
+
+  - name: Stop service mariadb-server
+    service:
+      name: mariadb
+      state: stopped
+    when: not bootstrapped.stat.exists
+
+  - name: Add galera configuration to /etc/mysql/mariadb.conf.d/
+    template:
+      src: templates/galera.cnf.j2
+      dest: /etc/mysql/mariadb.conf.d/60-galera.cnf
+
+  - name: Run galera_new_cluster
+    command: galera_new_cluster
+    run_once: true
+    when: not bootstrapped.stat.exists
+
+  - name: create bootstrapp marker
+    file: 
+      path: /home/bootstrap
+      state: touch
+    when: not bootstrapped.stat.exists
+
+  - name: Start service mariadb
+    service:
+      name: mariadb
+      state: started
+    throttle: 1
+
+  - name: Restart mariadb if config changed after bootstrap
+    service:
+      name: mariadb
+      state: restarted
+    throttle: 1
+    when:
+      - bootstrapped.stat.exists
+      - galera_conf.changed
+
+  - name: Wait the cluster to settle
+    pause:
+      seconds: 5    
+
+  - name: Verify Galera Cluster size
+    command: mariadb -u root -p'{{ mariadb_root_password }}' -e "SHOW STATUS LIKE 'wsrep_cluster_size'"
+    register: wsrep_status
+    no_log: yes
+    changed_when: false
+
+  - debug:
+      var: wsrep_status.stdout_lines

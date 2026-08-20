@@ -1,0 +1,19 @@
+[database]
+ip-node-1 ansible_host=10.0.0.11  mariadb_exists=false
+ip-node-2 ansible_host=10.0.0.12  mariadb_exists=false
+ip-node-3 ansible_host=10.0.0.13  mariadb_exists=false
+
+[all:vars]
+ansible_connection = ssh
+ansible_ssh_port = 22
+ansible_user = ubuntu
+
+# Supported version: check supported mariadb version at official repository
+mariadb_version = 12.3 
+mariadb_user = mariauser
+mariadb_password = Securepasswordinbase64
+mariadb_root_password = "{{ mariadb_password }}"
+listen_port = 3306
+
+total_hosts = {{ groups['database'] | length }}
+cluster_hostnames = {{ groups['database'] | map('extract',hostvars,'ansible_hostname') | list }}
