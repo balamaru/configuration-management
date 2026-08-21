@@ -1,6 +1,6 @@
 # Ansible Playbook to Install Apache Superset
 
-MariaDB Cluster Architecture
+Stack Architecture
 <p align="center"> <img src="images/image.png"> </p>
 
 ## 1. Prequesites
@@ -10,7 +10,7 @@ MariaDB Cluster Architecture
 ## 2. Running the Playbook
 Before running make sure the `inventory` was fiiled. Then you can run with
 ```sh
-ansible-playbook -i inventory deploy_mariadb.yml
+ansible-playbook -i inventory deploy_superset.yml
 ```
 Ansible galaxy
 ```sh
