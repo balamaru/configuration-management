@@ -1,0 +1,298 @@
+---
+- name: Install Apache Superset
+  hosts: superset
+  become: yes
+  gather_facts: true
+  tasks:
+
+  - name: Update the package lists
+    apt:
+      update_cache: yes
+
+  - name: Install prerequisites
+    apt:
+      name:
+        - build-essential
+        - libssl-dev
+        - libffi-dev
+        - python3-dev
+        - python3-pip
+        - python3-venv
+        - libsasl2-dev
+        - libldap2-dev
+        - nginx
+        - certbot
+        - python3-certbot-nginx
+        - gnupg
+        - postgresql-common
+        - libzstd-dev
+        - libsnappy-dev
+        - pkg-config
+        - libmysqlclient-dev
+        - unixodbc-dev
+        - freetds-dev
+        - libsasl2-dev
+        - libldap2-dev
+      state: present
+
+  - name: Add PostgreSQL repository
+    command: /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+    args:
+      creates: /etc/apt/sources.list.d/pgdg.list
+
+  - name: Install PostgreSQL and development tools
+    apt:
+      name:
+        - postgresql-{{ postgres_version }}
+        - postgresql-server-dev-{{ postgres_version }}
+        - postgresql-client-{{ postgres_version }}
+        - libpq-dev
+        - python3-psycopg2
+      state: present
+      update_cache: yes
+  
+  - name: Set PostgreSQL listen address
+    ansible.builtin.lineinfile:
+      path: /etc/postgresql/{{ postgres_version }}/main/postgresql.conf
+      regexp: "^#?listen_addresses = "
+      line: "listen_addresses = 'localhost'"
+      state: present
+      backup: yes
+    notify: Restart PostgreSQL
+
+  - name: Allow Superset user to connect to database (md5)
+    community.postgresql.postgresql_pg_hba:
+      dest: /etc/postgresql/{{ postgres_version }}/main/pg_hba.conf
+      contype: host
+      databases: all
+      users: all
+      address: 127.0.0.1/32
+      method: md5
+      backup: yes
+    notify: Restart PostgreSQL
+
+  - name: Flush handlers so PostgreSQL config is applied before use
+    meta: flush_handlers
+
+  - name: Ensure PostgreSQL is running and enabled
+    systemd:
+      name: postgresql
+      state: started
+      enabled: yes
+
+  - name: Create PostgreSQL user for Superset
+    become_user: postgres
+    community.postgresql.postgresql_user:
+      name: "{{ superset_username }}"
+      password: "{{ superset_password }}"
+      state: present
+    no_log: yes
+ 
+  - name: Create PostgreSQL database for Superset
+    become_user: postgres
+    community.postgresql.postgresql_db:
+      name: "{{ superset_username }}"
+      owner: "{{ superset_username }}"
+      state: present
+
+  - name: Create Superset directory
+    file:
+      path: "{{ superset_home_dir }}"
+      state: directory
+      owner: "{{ superset_user }}"
+      group: "{{ superset_user }}"
+      mode: '0755'
+
+  - name: Create python virtualenv
+    ansible.builtin.command: python3 -m venv {{ superset_venv_dir }}
+    args:
+      creates: "{{ superset_venv_dir }}/bin/activate"
+    become_user: "{{ superset_user }}"
+
+  - name: Install Superset and required DB drivers in venv
+    pip:
+      name:
+        - pip
+        - setuptools
+        - wheel
+        - pillow
+        - apache-superset==5.0.0
+        - marshmallow==3.20.1
+        - gunicorn
+        - psycopg2-binary
+        - psycopg2
+        - pyathena[pandas]
+        - PyAthenaJDBC
+        - pydynamodb
+        - sqlalchemy-redshift
+        - pyhive
+        - pymssql
+        - clickhouse-connect
+        - cockroachdb
+        - couchbase-sqlalchemy
+        - elasticsearch-dbapi
+        - sqlalchemy-bigquery
+        - shillelagh[gsheetsapi]
+        - firebolt-sqlalchemy
+        - nzalchemy
+        - mysqlclient
+        - oceanbase_py
+        - cx_Oracle
+        - hdbcli
+        - sqlalchemy-hana
+        - sqlalchemy-singlestoredb
+        - snowflake-sqlalchemy
+        - pym
+        - teradatasqlalchemy
+        - Flask-Limiter==3.3.1
+      virtualenv: "{{ superset_venv_dir }}"
+      state: present
+    become_user: "{{ superset_user }}"
+
+  - name: Create superset_config
+    template:
+      src: templates/superset_config.py.j2
+      dest: "{{ superset_config_path }}"
+      owner: "{{ superset_user }}"
+      group: "{{ superset_user }}"
+      mode: '0644'
+    notify: Restart Superset
+
+  - name: Set environment variables
+    set_fact:
+      superset_env_vars :
+        FLASK_APP: superset
+        SUPERSET_CONFIG_PATH: "{{ superset_config_path }}"
+        SUPERSET_SECRET_KEY: "{{ superset_secret_key }}"
+    become_user: "{{ superset_user }}"
+  
+  - name: Upgrade superset db
+    shell: |
+      . {{ superset_venv_dir }}/bin/activate
+      superset db upgrade
+    environment: "{{ superset_env_vars }}"
+    become_user: "{{ superset_user }}"
+    args:
+      chdir: "{{ superset_home_dir }}"
+
+  - name: Check if superset admin already created
+    stat:
+      path: "{{ superset_home_dir }}/.superset.fab_admin_created"
+    register: admin_created
+
+  - name: Create superset admin user
+    shell: |
+      . {{ superset_venv_dir }}/bin/activate
+      superset fab create-admin --username "{{ superset_username }}" --firstname "{{ superset_firstname }}" --lastname "{{ superset_lastname }}" --email "{{ ssl_admin_email }}" --password "{{ superset_password }}"
+    environment: "{{ superset_env_vars }}"
+    become_user: "{{ superset_user }}"
+    no_log: yes
+    args:
+      stdin: |
+        "{{ superset_password }}"
+        "{{ superset_password }}"
+      chdir: "{{ superset_home_dir }}"
+      creates: "{{ superset_home_dir }}/.superset.fab_admin_created"
+    when: not admin_created.stat.exists
+
+  - name: Initialize superset roles and permission
+    shell: |
+      . {{ superset_venv_dir }}/bin/activate
+      superset init
+    environment: "{{ superset_env_vars }}"
+    become_user: "{{ superset_user }}"
+    args:
+      chdir: "{{ superset_home_dir }}"
+
+  - name: Create Systemd service file for Superset
+    template:
+      src: templates/superset.service.j2
+      dest: /etc/systemd/system/superset.service
+      owner: root
+      group: root
+      mode: '0644'
+    notify:
+      - Reload systemd daemon
+      - Restart Superset
+
+  - name: Flush handlers so systemd unit is reloaded before starting
+    meta: flush_handlers
+
+  - name: Start and enable Superset service
+    systemd:
+      name: superset
+      state: started
+      enabled: yes
+  
+  - name: Ensure webroot directory exists for ACME challenge
+    file:
+      path: /var/www/html
+      state: directory
+      mode: '0755'
+
+  - name: Deploy Nginx HTTP config (also serves ACME challenge)
+    template:
+      src: templates/superset.nginx-http.conf.j2
+      dest: /etc/nginx/conf.d/superset.conf
+      mode: '0644'
+    notify: Reload Nginx
+
+  - name: Flush handlers so Nginx is listening before requesting cert
+    meta: flush_handlers
+
+  - name: Obtain SSL certificate for Superset
+    shell: |
+      certbot certonly --webroot --webroot-path /var/www/html --non-interactive --agree-tos \
+      --email {{ ssl_admin_email }} \
+      -d {{ superset_domain }}
+    args:
+      creates: "{{ ssl_cert_file }}"
+    when: enable_ssl | default(false)
+
+  - name: Create SSL-enabled Nginx config
+    template:
+      src: templates/superset.nginx.conf.j2
+      dest: /etc/nginx/conf.d/superset.conf
+      mode: '0644'
+    notify: Reload Nginx
+    when: enable_ssl | default(false)
+
+  - name: Copy Certbot systemd timer and service for automatic renewal
+    template:
+      src: "{{ item.src }}"
+      dest: "{{ item.dest }}"
+    with_items:
+      - { src: "templates/certbot.service.j2", dest: "/usr/lib/systemd/system/certbot.service" }
+      - { src: "templates/certbot.timer.j2", dest: "/usr/lib/systemd/system/certbot.timer" }
+    when: enable_ssl | default(false)
+    notify: Reload systemd daemon
+
+  - name: Flush handlers so certbot timer unit is known to systemd
+    meta: flush_handlers
+
+  - name: Ensure Certbot timer is active
+    service:
+      name: certbot.timer
+      state: started
+      enabled: true
+    when: enable_ssl | default(false)
+
+  handlers:
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: yes
+
+    - name: Restart Superset
+      systemd:
+        name: superset
+        state: restarted
+
+    - name: Reload Nginx
+      service:
+        name: nginx
+        state: reloaded
+
+    - name: Restart PostgreSQL
+      service:
+        name: postgresql
+        state: restarte

@@ -1,0 +1,16 @@
+[superset]
+10.10.10.10
+
+[all:vars]
+ansible_connection = ssh
+ansible_ssh_port = 22
+ansible_user = ubuntu
+
+enable_ssl = true
+superset_domain = superset.example.com
+ssl_admin_email = user.example@example.com
+
+superset_username = admin
+superset_password = supersecret
+superset_firstname = Superset
+superset_lastname = Admin

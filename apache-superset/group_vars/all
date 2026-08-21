@@ -1,0 +1,16 @@
+superset_user: ubuntu
+superset_home_dir: /home/{{ superset_user }}/superset
+superset_venv_dir: "{{ superset_home_dir }}/venv"
+superset_config_path: "{{ superset_home_dir }}/superset_config.py"
+superset_secret_key: "FqcEoNFoC7BaqlKJUETKFOFulbtRrpD7J6AcZuIYPhTEGYVQm0CK5Li1"
+superset_port: 8088
+
+superset_gunicorn_workers: 4
+superset_gunicorn_timeout: 120
+
+ssl_key_file: "/etc/letsencrypt/live/{{ superset_domain }}/privkey.pem"
+ssl_cert_file: "/etc/letsencrypt/live/{{ superset_domain }}/fullchain.pem"
+
+postgres_version: 15
+superset_db_host: localhost
+superset_db_port: 5432

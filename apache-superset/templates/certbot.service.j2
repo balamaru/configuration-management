@@ -1,0 +1,8 @@
+[Unit]
+Description=Renew Let's Encrypt certificates
+
+[Service]
+ExecStart=/usr/bin/certbot renew
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,69 @@
+import os
+from datetime import timedelta
+from typing import Any, Literal
+
+# Kunci Rahasia Flask (SANGAT KRUSIAL untuk keamanan!)
+SECRET_KEY = os.environ.get('SUPERSET_SECRET_KEY')
+
+# Konfigurasi Database Backend (PostgreSQL)
+SQLALCHEMY_DATABASE_URI = 'postgresql+psycopg2://{{ superset_username }}:{{ superset_password | urlencode }}@{{ superset_db_host }}:{{ superset_db_port }}/{{ superset_username }}'
+
+# Flask-WTF flag untuk proteksi CSRF
+WTF_CSRF_ENABLED = True
+
+# Pengaturan Samesite Cookie untuk keamanan sesi
+SESSION_COOKIE_SAMESITE = 'Lax'
+
+# Pastikan cookie sesi aman (hanya dikirim via HTTPS)
+SESSION_COOKIE_SECURE = True
+
+# Batasan default untuk jumlah baris yang diambil oleh kueri di Explore/Dashboard.
+ROW_LIMIT = 50000
+
+# Fitur Experimental (Feature Flags)
+FEATURE_FLAGS = {
+    "EMBEDDED_ETCH_ENABLE": True,
+    "ALERT_REPORTS": True,
+    "THUMBNAILS": True,
+    "DASHBOARD_CROSS_FILTERS": True,
+    "GENERIC_CHART_AXES": True,
+}
+
+# Tampilkan beberapa popular database connection
+PREFERRED_DATABASES: list[str] = [
+    "PostgreSQL",
+    "Oracle",
+    "MySQL"
+]
+
+# Force refresh while auto-refresh in dashboard
+DASHBOARD_AUTO_REFRESH_MODE: Literal["fetch", "force"] = "force"
+# Dashboard auto refresh intervals
+DASHBOARD_AUTO_REFRESH_INTERVALS = [
+    [0, "Don't refresh"],
+    [10, "10 seconds"],
+    [30, "30 seconds"],
+    [60, "1 minute"],
+    [300, "5 minutes"],
+    [1800, "30 minutes"],
+    [3600, "1 hour"],
+    [21600, "6 hours"],
+    [43200, "12 hours"],
+    [86400, "24 hours"],
+]
+
+# Allowed format types for upload on Database view
+EXCEL_EXTENSIONS = {"xlsx", "xls"}
+CSV_EXTENSIONS = {"csv", "tsv", "txt"}
+COLUMNAR_EXTENSIONS = {"parquet", "zip"}
+ALLOWED_EXTENSIONS = {*EXCEL_EXTENSIONS, *CSV_EXTENSIONS, *COLUMNAR_EXTENSIONS}
+
+# CSV Options: key/value pairs that will be passed as argument to DataFrame.to_csv
+# method.
+# note: index option should not be overridden
+CSV_EXPORT = {"encoding": "utf-8"}
+
+# Excel Options: key/value pairs that will be passed as argument to DataFrame.to_excel
+# method.
+# note: index option should not be overridden
+EXCEL_EXPORT: dict[str, Any] = {}
